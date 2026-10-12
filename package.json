@@ -33,7 +33,9 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "dev": "dsh web --patch ./debug.patch.yml"
+    "dev": "dsh web --patch ./debug.patch.yml",
+    "prepare": "pnpm run build",
+    "prepack": "pnpm run build"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.4"
