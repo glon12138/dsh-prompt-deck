@@ -1,0 +1,13 @@
+# Development overlay for dsh-prompt-deck — loads the HOST half straight from
+# source, no `dsh plugin add` needed:
+#
+#   pnpm dsh web --patch ./debug.patch.yml
+#
+# PITFALL: the path must be ABSOLUTE. A patch file contributes configuration
+# but does not change the profile directory the loader resolves module paths
+# against (relative paths would anchor there, not in this project).
+# The client half is discovered from this package's package.json
+# (`exports["./client"]` + `dsh.client`) once this row loads the package.
+- insert:
+    - id: dsh-prompt-deck
+      name: 'D:/10_AI_workspace/dsh_workspace/dsh-plugin/dsh-prompt-deck/src/index.ts'
