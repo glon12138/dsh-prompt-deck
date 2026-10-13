@@ -15,6 +15,9 @@ overwrites what you already typed.
 - **右侧面板 tab**（`sidebar.right.pane.tab`，会话级）——搜索、列表、新建、编辑、删除（二次确认）
 - **行内展开看全文** —— 卡片左侧 ▸ 原地展开完整内容，可直接「追加到输入框」
 - **点击卡片注入** —— 追加到当前草稿，保留已有输入；搜索框回车注入首个匹配
+- **导入/导出** —— 一键下载 JSON 备份（含回收站数据）；导入按 id 合并、冲突跳过、重复导入幂等
+- **回收站** —— 删除进回收站，可恢复或永久删除，防手滑
+- **标签/分组** —— 卡片可打标签、设分组；点击 chip / 下拉即时过滤
 - **引导页入口** —— 右侧栏「新标签页」的 guide 页有直达入口卡片
 - **首次运行种子数据** —— 文件不存在时写入 4 张示例卡；只播一次，删除不回种
 - **错误处理** —— 加载/保存/删除失败显示横幅与「重试」，损坏的存储文件报 500 而不静默覆盖
@@ -22,7 +25,8 @@ overwrites what you already typed.
 ## Structure / 结构
 
 ```
-src/index.ts      HOST half  — /__prompt-deck/{list,save,delete} routes + JSON storage (tsc → dist/)
+src/index.ts      HOST half  — /__prompt-deck/* routes + storage glue (存储层在 store.ts) (tsc → dist/)
+src/store.ts      HOST half  — card type, JSON store IO, seeds, trash & import merge (pure functions)
 lib/client.js     BROWSER half — composer button + right-Sidebar tab body (loaded via exports["./client"])
 cordis.patch.yml  bundle layer — inserts the host row into a profile
 debug.patch.yml   dev overlay — pnpm dev boots with the local src/index.ts
@@ -77,14 +81,22 @@ the content is appended below your draft.
 | Route | Method | Body | Result |
 |---|---|---|---|
 | `/__prompt-deck/list` | GET | — | `{ ok, prompts }`；文件缺失时用种子数据初始化 |
-| `/__prompt-deck/save` | POST | `{ id?, title, content }` | upsert one card → `{ ok, prompt }` |
-| `/__prompt-deck/delete` | POST | `{ id }` | → `{ ok, id }` |
+| `/__prompt-deck/save` | POST | `{ id?, title, content, tags?, group? }` | upsert one card → `{ ok, prompt }` |
+| `/__prompt-deck/delete` | POST | `{ id }` | **软删除**（移入回收站）→ `{ ok, id, deletedAt }` |
+| `/__prompt-deck/restore` | POST | `{ id }` | 恢复 → `{ ok, id }` |
+| `/__prompt-deck/purge` | POST | `{ id }` | 永久删除 → `{ ok, id }` |
+| `/__prompt-deck/export` | GET | — | 全量备份（含回收站）→ `{ ok, version, exportedAt, prompts }` |
+| `/__prompt-deck/import` | POST | `prompts[]` 或 `{ prompts }` | 按 id 合并 → `{ ok, added, skipped, invalid }` |
 | `/dsh-prompt-deck/ping` | GET | — | health check |
 
 Storage guarantees: every read-modify-write runs through one promise chain
 (no interleaved writes), writes land via tmp-file + rename (a crash never leaves a
 half-written store), and a corrupted file fails loudly (500) instead of being
 overwritten.
+
+Data shape / 数据形状：`~/.dsh/prompt-deck.json` 中每张卡片含 `tags: string[]`、
+`group: string` 与可选的 `deletedAt`（存在即在回收站）；v0.1 的旧文件直接兼容——
+缺失字段在解析时自动补默认值。
 
 ## Theme & Skin Compatibility / 主题与皮肤兼容
 

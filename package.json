@@ -1,6 +1,6 @@
 {
   "name": "dsh-prompt-deck",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "dsh-prompt-deck — local prompt deck for DSH: a composer button opens a searchable prompt-card panel; clicking a card appends it to the input draft.",
   "keywords": [
     "dsh",
