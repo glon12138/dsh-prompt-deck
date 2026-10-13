@@ -188,3 +188,57 @@ export function applyPurge(prompts: PromptItem[], id: string): 'ok' | 'missing' 
   prompts.splice(index, 1)
   return 'ok'
 }
+
+// ── import merge ────────────────────────────────────────────────────────────
+
+export interface ImportResult {
+  prompts: PromptItem[]
+  added: number
+  skipped: number // id already present locally
+  invalid: number // malformed / oversized entry
+}
+
+export function mergeImported(
+  existing: PromptItem[],
+  imported: unknown[],
+  now: string,
+  genId: () => string,
+): ImportResult {
+  const prompts = existing.slice()
+  const seen = new Set(prompts.map((p) => p.id))
+  let added = 0
+  let skipped = 0
+  let invalid = 0
+  for (const entry of imported) {
+    // Entries without an id key mean "create new" — default it to '' so
+    // normalizeEntry's id-string requirement doesn't reject them.
+    const candidate =
+      typeof entry === 'object' && entry !== null && !('id' in entry)
+        ? { ...(entry as Record<string, unknown>), id: '' }
+        : entry
+    const card = normalizeEntry(candidate)
+    if (
+      !card ||
+      card.title === '' ||
+      card.content === '' ||
+      card.title.length > MAX_TITLE ||
+      card.content.length > MAX_CONTENT
+    ) {
+      invalid++
+      continue
+    }
+    if (card.id !== '' && seen.has(card.id)) {
+      skipped++ // local copy wins; keeps re-import idempotent
+      continue
+    }
+    if (card.id === '' && prompts.some((p) => p.title === card.title && p.content === card.content)) {
+      skipped++ // no id to match on — identical content means it's already here
+      continue
+    }
+    const id = card.id === '' ? genId() : card.id
+    prompts.push({ ...card, id, updatedAt: now })
+    seen.add(id)
+    added++
+  }
+  return { prompts, added, skipped, invalid }
+}

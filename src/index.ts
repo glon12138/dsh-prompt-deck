@@ -6,6 +6,8 @@
 //   POST /__prompt-deck/delete  → soft-delete one card (to trash) { id } → { ok, id, deletedAt }
 //   POST /__prompt-deck/restore → un-trash one card  { id } → { ok, id }
 //   POST /__prompt-deck/purge   → permanently remove { id } → { ok, id }
+//   GET  /__prompt-deck/export  → full backup incl. trash → { ok, version, exportedAt, prompts }
+//   POST /__prompt-deck/import  → merge prompts (array or { prompts }) → { ok, added, skipped, invalid }
 //   GET  /dsh-prompt-deck/ping  → health check
 //
 // Storage: ~/.dsh/prompt-deck.json — the whole storage layer (types, parse,
@@ -21,6 +23,7 @@ import {
   MAX_TAG_LEN,
   MAX_TAGS,
   MAX_TITLE,
+  mergeImported,
   normalizeGroup,
   normalizeTags,
   readStore,
@@ -248,6 +251,45 @@ async function handlePurge(req: any): Promise<Outcome> {
   })
 }
 
+async function handleExport(): Promise<Outcome> {
+  return serialized(async () => {
+    const store = await readStoreOrEmpty()
+    if ('status' in store) return store
+    // Full dump incl. trash: a backup must survive reinstall.
+    return ok({ version: 2, exportedAt: new Date().toISOString(), prompts: store.prompts })
+  })
+}
+
+async function handleImport(req: any): Promise<Outcome> {
+  let body: any
+  try {
+    body = await readJsonBody(req)
+  } catch (e: any) {
+    return fail(e?.status ?? 400, e?.message ?? 'bad request')
+  }
+  const list = Array.isArray(body)
+    ? body
+    : Array.isArray(body?.prompts)
+      ? body.prompts
+      : null
+  if (!list) return fail(400, 'body must be an array of prompts or { prompts: [...] }')
+
+  return serialized(async (): Promise<Outcome> => {
+    const store = await readStoreOrEmpty()
+    if ('status' in store) return store
+    const { prompts, added, skipped, invalid } = mergeImported(
+      store.prompts, list, new Date().toISOString(), randomUUID)
+    if (added === 0) return ok({ added, skipped, invalid }) // nothing new → no write
+    store.prompts = prompts
+    try {
+      await writeStore(store)
+    } catch (e) {
+      return fail(500, `failed to write prompt store: ${(e as Error).message}`)
+    }
+    return ok({ added, skipped, invalid })
+  })
+}
+
 // ── plugin entry ────────────────────────────────────────────────────────────
 
 export function apply(ctx: Context) {
@@ -283,8 +325,10 @@ export function apply(ctx: Context) {
       ws.register({ kind: 'exact', path: '/__prompt-deck/delete', handler: route('POST', (req) => handleDelete(req)) }),
       ws.register({ kind: 'exact', path: '/__prompt-deck/restore', handler: route('POST', (req) => handleRestore(req)) }),
       ws.register({ kind: 'exact', path: '/__prompt-deck/purge', handler: route('POST', (req) => handlePurge(req)) }),
+      ws.register({ kind: 'exact', path: '/__prompt-deck/export', handler: route('GET', () => handleExport()) }),
+      ws.register({ kind: 'exact', path: '/__prompt-deck/import', handler: route('POST', (req) => handleImport(req)) }),
     ]
-    console.log('[dsh-prompt-deck] routes ready: /dsh-prompt-deck/ping, /__prompt-deck/{list,save,delete,restore,purge}')
+    console.log('[dsh-prompt-deck] routes ready: /dsh-prompt-deck/ping, /__prompt-deck/{list,save,delete,restore,purge,export,import}')
     return () => {
       for (const dispose of disposers) dispose()
     }
