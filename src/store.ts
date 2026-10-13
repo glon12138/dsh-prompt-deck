@@ -17,6 +17,8 @@ export interface PromptItem {
   content: string
   createdAt: string
   updatedAt: string
+  /** Present = in the trash; absent = alive. */
+  deletedAt?: string
 }
 
 export interface Store {
@@ -82,6 +84,7 @@ export function normalizeEntry(entry: unknown): PromptItem | null {
     content: e.content,
     createdAt: typeof e.createdAt === 'string' ? e.createdAt : '',
     updatedAt: typeof e.updatedAt === 'string' ? e.updatedAt : '',
+    deletedAt: typeof e.deletedAt === 'string' ? e.deletedAt : undefined,
   }
 }
 
@@ -123,4 +126,27 @@ export function serialized<T>(task: () => Promise<T>): Promise<T> {
   const run = chain.then(task, task)
   chain = run.catch(() => undefined)
   return run
+}
+
+// ── trash (soft delete) ─────────────────────────────────────────────────────
+
+export function applySoftDelete(prompts: PromptItem[], id: string, now: string): 'ok' | 'missing' {
+  const p = prompts.find((x) => x.id === id)
+  if (!p) return 'missing'
+  if (p.deletedAt === undefined) p.deletedAt = now // earliest wins: idempotent
+  return 'ok'
+}
+
+export function applyRestore(prompts: PromptItem[], id: string): 'ok' | 'missing' {
+  const p = prompts.find((x) => x.id === id)
+  if (!p) return 'missing'
+  delete p.deletedAt
+  return 'ok'
+}
+
+export function applyPurge(prompts: PromptItem[], id: string): 'ok' | 'missing' {
+  const index = prompts.findIndex((x) => x.id === id)
+  if (index === -1) return 'missing'
+  prompts.splice(index, 1)
+  return 'ok'
 }

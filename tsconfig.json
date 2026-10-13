@@ -8,6 +8,8 @@
     "outDir": "dist",
     "rootDir": "src",
     "strict": true,
+    "allowImportingTsExtensions": true,
+    "rewriteRelativeImportExtensions": true,
     "declaration": false,
     "sourceMap": false,
     "verbatimModuleSyntax": true,

@@ -3,15 +3,17 @@
 // Routes (same-origin, JSON in / JSON out, method-gated in the handler):
 //   GET  /__prompt-deck/list    → { ok, prompts }  (materializes an empty store on first run)
 //   POST /__prompt-deck/save    → upsert one card  { id?, title, content } → { ok, prompt }
-//   POST /__prompt-deck/delete  → remove one card   { id } → { ok, id }
+//   POST /__prompt-deck/delete  → soft-delete one card (to trash) { id } → { ok, id, deletedAt }
+//   POST /__prompt-deck/restore → un-trash one card  { id } → { ok, id }
+//   POST /__prompt-deck/purge   → permanently remove { id } → { ok, id }
 //   GET  /dsh-prompt-deck/ping  → health check
 //
 // Storage: ~/.dsh/prompt-deck.json — the whole storage layer (types, parse,
 // seeds, IO, serialized chain) lives in src/store.ts; this file is routes only.
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
-import { MAX_CONTENT, MAX_TITLE, readStore, seedStore, serialized, writeStore } from './store.js'
-import type { PromptItem, Store } from './store.js'
+import { applyPurge, applyRestore, applySoftDelete, MAX_CONTENT, MAX_TITLE, readStore, seedStore, serialized, writeStore } from './store.ts'
+import type { PromptItem, Store } from './store.ts'
 
 export const name = 'dsh-prompt-deck'
 
@@ -166,9 +168,56 @@ async function handleDelete(req: any): Promise<Outcome> {
   return serialized(async (): Promise<Outcome> => {
     const store = await readStoreOrEmpty()
     if ('status' in store) return store
-    const index = store.prompts.findIndex((p) => p.id === id)
-    if (index === -1) return fail(404, 'prompt not found')
-    store.prompts.splice(index, 1)
+    const result = applySoftDelete(store.prompts, id, new Date().toISOString())
+    if (result === 'missing') return fail(404, 'prompt not found')
+    try {
+      await writeStore(store)
+    } catch (e) {
+      return fail(500, `failed to write prompt store: ${(e as Error).message}`)
+    }
+    return ok({ id, deletedAt: store.prompts.find((p) => p.id === id)?.deletedAt })
+  })
+}
+
+async function handleRestore(req: any): Promise<Outcome> {
+  let body: any
+  try {
+    body = await readJsonBody(req)
+  } catch (e: any) {
+    return fail(e?.status ?? 400, e?.message ?? 'bad request')
+  }
+  const id = typeof body?.id === 'string' && body.id !== '' ? body.id : undefined
+  if (!id) return fail(400, 'id is required')
+
+  return serialized(async (): Promise<Outcome> => {
+    const store = await readStoreOrEmpty()
+    if ('status' in store) return store
+    const result = applyRestore(store.prompts, id)
+    if (result === 'missing') return fail(404, 'prompt not found')
+    try {
+      await writeStore(store)
+    } catch (e) {
+      return fail(500, `failed to write prompt store: ${(e as Error).message}`)
+    }
+    return ok({ id })
+  })
+}
+
+async function handlePurge(req: any): Promise<Outcome> {
+  let body: any
+  try {
+    body = await readJsonBody(req)
+  } catch (e: any) {
+    return fail(e?.status ?? 400, e?.message ?? 'bad request')
+  }
+  const id = typeof body?.id === 'string' && body.id !== '' ? body.id : undefined
+  if (!id) return fail(400, 'id is required')
+
+  return serialized(async (): Promise<Outcome> => {
+    const store = await readStoreOrEmpty()
+    if ('status' in store) return store
+    const result = applyPurge(store.prompts, id)
+    if (result === 'missing') return fail(404, 'prompt not found')
     try {
       await writeStore(store)
     } catch (e) {
@@ -211,8 +260,10 @@ export function apply(ctx: Context) {
       ws.register({ kind: 'exact', path: '/__prompt-deck/list', handler: route('GET', () => handleList()) }),
       ws.register({ kind: 'exact', path: '/__prompt-deck/save', handler: route('POST', (req) => handleSave(req)) }),
       ws.register({ kind: 'exact', path: '/__prompt-deck/delete', handler: route('POST', (req) => handleDelete(req)) }),
+      ws.register({ kind: 'exact', path: '/__prompt-deck/restore', handler: route('POST', (req) => handleRestore(req)) }),
+      ws.register({ kind: 'exact', path: '/__prompt-deck/purge', handler: route('POST', (req) => handlePurge(req)) }),
     ]
-    console.log('[dsh-prompt-deck] routes ready: /dsh-prompt-deck/ping, /__prompt-deck/{list,save,delete}')
+    console.log('[dsh-prompt-deck] routes ready: /dsh-prompt-deck/ping, /__prompt-deck/{list,save,delete,restore,purge}')
     return () => {
       for (const dispose of disposers) dispose()
     }
