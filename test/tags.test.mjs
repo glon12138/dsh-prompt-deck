@@ -35,6 +35,23 @@ test('parseStore: legacy entries get tags=[] and group=""', () => {
   assert.equal(store.prompts[0].group, '')
 })
 
+test('parseStore: lenient path truncates tags to 50 chars and dedupes', () => {
+  const raw = JSON.stringify({
+    prompts: [
+      {
+        id: 'a',
+        title: 't',
+        content: 'c',
+        tags: ['x'.repeat(10_000), 'dup', 'dup', '  dup  '],
+        group: 'g'.repeat(1000),
+      },
+    ],
+  })
+  const store = parseStore(raw)
+  assert.deepEqual(store.prompts[0].tags, ['x'.repeat(50), 'dup'])
+  assert.equal(store.prompts[0].group.length, 50)
+})
+
 test('parseStore: tags/group preserved; invalid tags coerced to []', () => {
   const raw = JSON.stringify({
     prompts: [

@@ -92,11 +92,12 @@ export function normalizeEntry(entry: unknown): PromptItem | null {
     createdAt: typeof e.createdAt === 'string' ? e.createdAt : '',
     updatedAt: typeof e.updatedAt === 'string' ? e.updatedAt : '',
     tags: Array.isArray(e.tags)
-      ? e.tags
-          .filter((x): x is string => typeof x === 'string')
-          .map((x) => x.trim())
-          .filter((x) => x !== '')
-          .slice(0, MAX_TAGS)
+      ? [...new Set(
+          e.tags
+            .filter((x): x is string => typeof x === 'string')
+            .map((x) => x.trim().slice(0, MAX_TAG_LEN))
+            .filter((x) => x !== ''),
+        )].slice(0, MAX_TAGS)
       : [],
     group: typeof e.group === 'string' ? e.group.trim().slice(0, MAX_GROUP) : '',
     deletedAt: typeof e.deletedAt === 'string' ? e.deletedAt : undefined,
