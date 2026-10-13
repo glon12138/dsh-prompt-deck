@@ -2,7 +2,23 @@
   "name": "dsh-prompt-deck",
   "version": "0.1.0",
   "description": "dsh-prompt-deck — local prompt deck for DSH: a composer button opens a searchable prompt-card panel; clicking a card appends it to the input draft.",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "prompt",
+    "prompt-manager",
+    "dsh-plugin"
+  ],
+  "author": "glon12138",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/glon12138/dsh-prompt-deck.git"
+  },
+  "bugs": {
+    "url": "https://github.com/glon12138/dsh-prompt-deck/issues"
+  },
+  "homepage": "https://github.com/glon12138/dsh-prompt-deck#readme",
   "type": "module",
   "main": "./dist/index.js",
   "exports": {
@@ -45,5 +61,8 @@
     "@deepseek-ai/dsh": "0.2.0-rc.2",
     "@types/node": "^22.10.0",
     "typescript": "^5.6.0"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

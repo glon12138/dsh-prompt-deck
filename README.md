@@ -119,3 +119,6 @@ per-theme CSS selectors. It also implements the
 8. 加载顺序靠服务依赖（`export const inject = [...]`），不靠文件顺序。
 9. `dsh plugin add <dir>` 的相对路径锚定「调用目录」——在插件父目录执行。
 10. Node 版本：DSH 要求 `^22.19.0 || >=24.0.0`。
+
+# 发布命令
+npm publish --registry=https://registry.npmjs.org/
