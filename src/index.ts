@@ -2,7 +2,7 @@
 //
 // Routes (same-origin, JSON in / JSON out, method-gated in the handler):
 //   GET  /__prompt-deck/list    → { ok, prompts }  (materializes an empty store on first run)
-//   POST /__prompt-deck/save    → upsert one card  { id?, title, content } → { ok, prompt }
+//   POST /__prompt-deck/save    → upsert one card  { id?, title, content, tags?, group? } → { ok, prompt }
 //   POST /__prompt-deck/delete  → soft-delete one card (to trash) { id } → { ok, id, deletedAt }
 //   POST /__prompt-deck/restore → un-trash one card  { id } → { ok, id }
 //   POST /__prompt-deck/purge   → permanently remove { id } → { ok, id }
@@ -12,7 +12,22 @@
 // seeds, IO, serialized chain) lives in src/store.ts; this file is routes only.
 import { randomUUID } from 'node:crypto'
 import type { Context } from '@deepseek-ai/cordis'
-import { applyPurge, applyRestore, applySoftDelete, MAX_CONTENT, MAX_TITLE, readStore, seedStore, serialized, writeStore } from './store.ts'
+import {
+  applyPurge,
+  applyRestore,
+  applySoftDelete,
+  MAX_CONTENT,
+  MAX_GROUP,
+  MAX_TAG_LEN,
+  MAX_TAGS,
+  MAX_TITLE,
+  normalizeGroup,
+  normalizeTags,
+  readStore,
+  seedStore,
+  serialized,
+  writeStore,
+} from './store.ts'
 import type { PromptItem, Store } from './store.ts'
 
 export const name = 'dsh-prompt-deck'
@@ -124,6 +139,10 @@ async function handleSave(req: any): Promise<Outcome> {
   if (!title || !content) return fail(400, 'title and content are required')
   if (title.length > MAX_TITLE) return fail(400, `title too long (max ${MAX_TITLE} characters)`)
   if (content.length > MAX_CONTENT) return fail(400, `content too long (max ${MAX_CONTENT} characters)`)
+  const tags = normalizeTags(body?.tags)
+  const group = normalizeGroup(body?.group)
+  if (tags === null) return fail(400, `tags must be up to ${MAX_TAGS} strings of ${MAX_TAG_LEN} characters each`)
+  if (group === null) return fail(400, `group must be a string of at most ${MAX_GROUP} characters`)
 
   return serialized(async (): Promise<Outcome> => {
     const store = await readStoreOrEmpty()
@@ -131,7 +150,7 @@ async function handleSave(req: any): Promise<Outcome> {
     const now = new Date().toISOString()
 
     if (id === undefined) {
-      const prompt: PromptItem = { id: randomUUID(), title, content, createdAt: now, updatedAt: now }
+      const prompt: PromptItem = { id: randomUUID(), title, content, tags, group, createdAt: now, updatedAt: now }
       store.prompts.push(prompt)
       try {
         await writeStore(store)
@@ -145,6 +164,8 @@ async function handleSave(req: any): Promise<Outcome> {
     if (!found) return fail(404, 'prompt not found')
     found.title = title
     found.content = content
+    found.tags = tags
+    found.group = group
     found.updatedAt = now
     try {
       await writeStore(store)

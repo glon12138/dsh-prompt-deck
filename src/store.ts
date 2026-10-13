@@ -17,6 +17,10 @@ export interface PromptItem {
   content: string
   createdAt: string
   updatedAt: string
+  /** Free-form tags for filtering; always present after parse (default []). */
+  tags: string[]
+  /** Optional single group label; '' = ungrouped. */
+  group: string
   /** Present = in the trash; absent = alive. */
   deletedAt?: string
 }
@@ -29,12 +33,15 @@ export const DATA_DIR = join(homedir(), '.dsh')
 export const DATA_FILE = join(DATA_DIR, 'prompt-deck.json')
 export const MAX_TITLE = 200
 export const MAX_CONTENT = 100_000
+export const MAX_TAGS = 20
+export const MAX_TAG_LEN = 50
+export const MAX_GROUP = 50
 
 // First-run seeds: written exactly once, when the store file does not exist.
 // Stable ids keep them recognizable; deleting a seed is a normal delete and
 // never re-triggers seeding (the file then exists).
 const SEED_AT = '2026-10-12T00:00:00.000Z'
-const SEEDS: PromptItem[] = [
+const SEEDS: Array<Omit<PromptItem, 'tags' | 'group'>> = [
   {
     id: 'seed-code-review',
     title: '代码审查',
@@ -70,7 +77,7 @@ const SEEDS: PromptItem[] = [
 ]
 
 export function seedStore(): Store {
-  return { prompts: SEEDS.map((p) => ({ ...p })) }
+  return { prompts: SEEDS.map((p) => ({ tags: [], group: '', ...p })) }
 }
 
 // Lenient per-entry: keep well-formed cards, drop malformed ones.
@@ -84,8 +91,39 @@ export function normalizeEntry(entry: unknown): PromptItem | null {
     content: e.content,
     createdAt: typeof e.createdAt === 'string' ? e.createdAt : '',
     updatedAt: typeof e.updatedAt === 'string' ? e.updatedAt : '',
+    tags: Array.isArray(e.tags)
+      ? e.tags
+          .filter((x): x is string => typeof x === 'string')
+          .map((x) => x.trim())
+          .filter((x) => x !== '')
+          .slice(0, MAX_TAGS)
+      : [],
+    group: typeof e.group === 'string' ? e.group.trim().slice(0, MAX_GROUP) : '',
     deletedAt: typeof e.deletedAt === 'string' ? e.deletedAt : undefined,
   }
+}
+
+// Strict validation for the interactive save path (bad input → 400).
+export function normalizeTags(input: unknown): string[] | null {
+  if (input === undefined || input === null) return []
+  if (!Array.isArray(input) || input.length > MAX_TAGS) return null
+  const out: string[] = []
+  for (const raw of input) {
+    if (typeof raw !== 'string') return null
+    const tag = raw.trim()
+    if (tag === '') continue // trim-empties are dropped, not rejected
+    if (tag.length > MAX_TAG_LEN) return null
+    if (!out.includes(tag)) out.push(tag)
+  }
+  return out
+}
+
+export function normalizeGroup(input: unknown): string | null {
+  if (input === undefined || input === null) return ''
+  if (typeof input !== 'string') return null
+  const group = input.trim()
+  if (group.length > MAX_GROUP) return null
+  return group
 }
 
 export function parseStore(raw: string): Store {
